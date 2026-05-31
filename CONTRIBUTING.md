@@ -210,6 +210,7 @@ Before marking a PR ready for review:
 - [ ] `npm test -- --run` passes (no new failures)
 - [ ] `npm run build` succeeds
 - [ ] Contract checks pass if contract files were touched (`cargo fmt --check`, `cargo clippy`, `cargo test`)
+- [ ] Security audit workflow passes on the latest `main` push or scheduled run for any dependency changes
 - [ ] PR description references the issue number(s) with `Closes #<number>`
 - [ ] New top-level routes include a smoke test entry in `tests/routes/smoke.test.tsx`
 - [ ] New architectural decisions are documented in `web/docs/`

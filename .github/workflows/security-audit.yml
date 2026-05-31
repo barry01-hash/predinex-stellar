@@ -1,6 +1,8 @@
 name: Security Audit
 
 on:
+  push:
+    branches: [ main ]
   schedule:
     # Every Monday at 08:00 UTC
     - cron: '0 8 * * 1'
@@ -10,6 +12,8 @@ jobs:
   npm-audit:
     name: npm dependency audit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: ./web
@@ -26,29 +30,37 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Audit (high and critical only)
-        # --audit-level=high surfaces high/critical findings without blocking on moderate/low.
-        # The step is marked continue-on-error so unrelated PRs are never blocked;
-        # findings are still visible in the workflow summary.
-        run: npm audit --audit-level=high
+      - name: Run npm audit
+        id: npm_audit
         continue-on-error: true
+        run: npm audit --json --audit-level=critical > npm-audit-report.json
 
-      - name: Generate audit report
-        run: npm audit --json > npm-audit-report.json || true
-
-      - name: Upload audit report
+      - name: Upload npm audit report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: npm-audit-report
           path: web/npm-audit-report.json
           retention-days: 30
 
+      - name: Check npm audit severity
+        env:
+          AUDIT_OUTCOME: ${{ steps.npm_audit.outcome }}
+          REPORT_PATH: npm-audit-report.json
+          SUMMARY_PATH: ${{ runner.temp }}/npm-audit-summary.md
+        run: |
+          node ../scripts/check-audit-report.mjs \
+            --tool npm \
+            --report "$REPORT_PATH" \
+            --audit-outcome "$AUDIT_OUTCOME" \
+            --summary-path "$SUMMARY_PATH"
+          cat "$SUMMARY_PATH" >> "$GITHUB_STEP_SUMMARY"
+
   cargo-audit:
     name: Cargo dependency audit
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./contracts/predinex
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -60,16 +72,28 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
-      - name: Audit
-        run: cargo audit
+      - name: Run cargo audit
+        id: cargo_audit
         continue-on-error: true
+        run: cargo audit --file contracts/predinex/Cargo.lock --json > contracts/predinex/cargo-audit-report.json
 
-      - name: Generate audit report
-        run: cargo audit --json > cargo-audit-report.json || true
-
-      - name: Upload audit report
+      - name: Upload cargo audit report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cargo-audit-report
           path: contracts/predinex/cargo-audit-report.json
           retention-days: 30
+
+      - name: Check cargo audit severity
+        env:
+          AUDIT_OUTCOME: ${{ steps.cargo_audit.outcome }}
+          REPORT_PATH: contracts/predinex/cargo-audit-report.json
+          SUMMARY_PATH: ${{ runner.temp }}/cargo-audit-summary.md
+        run: |
+          node scripts/check-audit-report.mjs \
+            --tool cargo \
+            --report "$REPORT_PATH" \
+            --audit-outcome "$AUDIT_OUTCOME" \
+            --summary-path "$SUMMARY_PATH"
+          cat "$SUMMARY_PATH" >> "$GITHUB_STEP_SUMMARY"

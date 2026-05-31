@@ -1,0 +1,5 @@
+[advisories]
+# Keep this list empty by default.
+# Add RustSec advisory IDs here only when a vulnerability has been reviewed,
+# accepted, and tracked in the issue or release notes.
+ignore = []
