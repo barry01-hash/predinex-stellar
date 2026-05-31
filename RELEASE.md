@@ -11,6 +11,7 @@ Before tagging a new release, ensure the following steps are completed:
 - [ ] **Contract Tests**: Run `cargo test` in `contracts/predinex`.
 - [ ] **Linting**: Ensure `npm run lint` and `cargo fmt --check` / `cargo clippy` pass.
 - [ ] **Environment**: Verify `.env.production` (if applicable) and contract IDs are correct for the target network.
+- [ ] **Upgrade safety**: Run the manual [`upgrade-verify.yml`](./.github/workflows/upgrade-verify.yml) workflow on testnet for any release that changes contract storage or migration behavior.
 
 ### 2. Documentation
 - [ ] **Version Bump**: Update version in `web/package.json` and `contracts/predinex/Cargo.toml`.
