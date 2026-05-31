@@ -1,0 +1,107 @@
+name: Upgrade Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      old_contract_id:
+        description: 'Current contract ID on testnet'
+        required: true
+      source_account:
+        description: 'Source account secret key or configured Stellar CLI identity'
+        required: true
+      wasm_path:
+        description: 'Path to the candidate WASM inside the repository'
+        required: true
+        default: 'contracts/predinex/target/wasm32v1-none/release/predinex.wasm'
+      migration_command:
+        description: 'Optional shell command that performs the migration step'
+        required: false
+        default: ''
+      sample_pools:
+        description: 'Number of pool snapshots to sample'
+        required: false
+        default: '5'
+      expected_state_version:
+        description: 'Expected contract state version after upgrade'
+        required: false
+        default: 'v1'
+      expected_event_schema_version:
+        description: 'Expected event schema version after upgrade'
+        required: false
+        default: 'v1'
+
+jobs:
+  verify-upgrade:
+    name: Verify contract upgrade on testnet
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: stable
+      STELLAR_NETWORK: testnet
+      STELLAR_SOURCE_ACCOUNT: ${{ github.event.inputs.source_account }}
+      OLD_CONTRACT_ID: ${{ github.event.inputs.old_contract_id }}
+      WASM_PATH: ${{ github.event.inputs.wasm_path }}
+      MIGRATION_COMMAND: ${{ github.event.inputs.migration_command }}
+      SAMPLE_POOLS: ${{ github.event.inputs.sample_pools }}
+      EXPECTED_STATE_VERSION: ${{ github.event.inputs.expected_state_version }}
+      EXPECTED_EVENT_SCHEMA_VERSION: ${{ github.event.inputs.expected_event_schema_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Add Soroban WASM target
+        run: rustup target add wasm32v1-none
+
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli --features opt
+
+      - name: Run contract tests
+        run: cargo test --manifest-path contracts/predinex/Cargo.toml
+
+      - name: Build candidate WASM
+        run: |
+          cargo build \
+            --manifest-path contracts/predinex/Cargo.toml \
+            --release \
+            --target wasm32v1-none
+
+      - name: Run upgrade verification
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          node scripts/upgrade-verify.mjs \
+            --old-contract-id "$OLD_CONTRACT_ID" \
+            --source-account "$STELLAR_SOURCE_ACCOUNT" \
+            --network "$STELLAR_NETWORK" \
+            --wasm "$WASM_PATH" \
+            --report-dir "$RUNNER_TEMP/upgrade-verify" \
+            --sample-pools "$SAMPLE_POOLS" \
+            --expected-state-version "$EXPECTED_STATE_VERSION" \
+            --expected-event-schema-version "$EXPECTED_EVENT_SCHEMA_VERSION" \
+            --migration-command "$MIGRATION_COMMAND"
+
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upgrade-verification-report
+          path: ${{ runner.temp }}/upgrade-verify/
+
+      - name: Summarize rollback instructions
+        if: always()
+        run: |
+          cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          ## Rollback Instructions
+
+          1. Re-deploy the last known good WASM or restore the prior contract ID.
+          2. If the migration mutated state, run the inverse migration against the pre-upgrade snapshot before re-opening traffic.
+          3. Keep the generated verification report attached to the release issue or PR.
+          EOF
